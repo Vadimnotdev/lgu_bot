@@ -218,9 +218,27 @@ bot = telebot.TeleBot(token)
 # Временное хранилище для данных пользователя
 user_data = {}
 
-def get_group_and_room_cells(sheet_name):
-    default_mapping = {"group_cell": "C7", "room_column": "D"}
-    return GROUP_ROOM_MAPPING.get(sheet_name, default_mapping)
+def get_group_and_room_cells(sheet):
+    """
+    Возвращает список ячеек с группами (если заполнены) и колонку аудиторий.
+    """
+    group_cells = []
+    
+    # Проверяем, есть ли данные в C7
+    if sheet["C7"].value:
+        group_cells.append("C7")
+
+    # Проверяем, есть ли данные в E7
+    if sheet["E7"].value:
+        group_cells.append("E7")
+
+    # Если нет данных в обеих ячейках, используем только C7
+    if not group_cells:
+        group_cells = ["C7"]
+
+    return {"group_cells": group_cells, "room_column": "D"}
+
+
 
 def get_group_data(sheet, group_name):
     """
@@ -286,14 +304,13 @@ def display_schedule(schedule, entity):
     return "\n\n".join(result)
 
 
-def search_teacher(sheet, column, sheet_name, teacher_name, target_day=None, education_type="SPO"):
+def search_teacher(sheet, sheet_name, teacher_name, target_day=None, education_type="SPO"):
     """
     Ищет расписание преподавателя по всем дням недели.
     Если target_day передан, то ищет только для этого дня.
     
     Аргументы:
         sheet: объект листа Excel.
-        column: столбец с данными о преподавателях и предметах (например, "C").
         sheet_name: название листа для использования в маппинге.
         teacher_name: имя преподавателя для поиска.
         target_day: конкретный день недели для поиска (опционально).
@@ -314,40 +331,58 @@ def search_teacher(sheet, column, sheet_name, teacher_name, target_day=None, edu
             return []
         days_mapping = vo_mapping
 
-    # Получение маппинга для аудиторий
-    room_column = "D" if column == "C" else "F"
+    # Получаем все возможные столбцы групп (например, ["C7", "E7"])
+    group_cells = get_group_and_room_cells(sheet)["group_cells"]
+    columns = [cell[0] for cell in group_cells]  # Преобразуем ["C7", "E7"] в ["C", "E"]
 
     for day in days_mapping.keys():
         if target_day and target_day.lower() != day.lower():
             continue
 
-        # Информация о днях из маппинга
         day_info = days_mapping[day]
         pairs_cells = day_info["pairs_cells"]
         time_cells = day_info["time_cells"]
         date_cell = day_info["date_cell"]
 
-        # Извлечение данных из таблицы
+        # Извлекаем дату и группы
         date = sheet[date_cell].value
-        group = clean_text(sheet[get_group_and_room_cells(sheet_name)["group_cell"]].value)
+        groups = []  # Список для групп, которым принадлежит пара
 
-        for pair_cell, (time_start, time_end) in zip(pairs_cells, time_cells):
-            pair_number = clean_text(sheet[f"A{pair_cell[1:]}"].value)
-            subject = clean_text(sheet[f"{column}{pair_cell[1:]}"].value)
-            teacher = clean_text(sheet[f"{column}{int(pair_cell[1:]) + 1}"].value)
-            room = clean_text(sheet[f"{room_column}{pair_cell[1:]}"].value)
+        for column in columns:  # Перебираем столбцы C и E
+            for pair_cell, (time_start, time_end) in zip(pairs_cells, time_cells):
+                subject = clean_text(sheet[f"{column}{pair_cell[1:]}"].value)
+                teacher = clean_text(sheet[f"{column}{int(pair_cell[1:]) + 1}"].value)
 
-            # Проверка на совпадение имени преподавателя
-            if teacher and teacher_name in normalize_teacher_name(teacher):
-                result.append({
-                    "day": day.capitalize(),
-                    "date": date or "Не указана",
-                    "time": (sheet[time_start].value, sheet[time_end].value),
-                    "subject": subject or "Не указано",
-                    "room": room or "Не указана",
-                    "group": group or "Не указана",
-                    "pair": pair_number or "Не указано"
-                })
+                if teacher and teacher_name in normalize_teacher_name(teacher):
+                    group_cell = f"{column}7"  # Определяем ячейку с группой (C7 или E7)
+                    group_name = clean_text(sheet[group_cell].value)  # Получаем название группы
+                    if group_name and group_name not in groups:  # Добавляем только если предмет относится к этой группе
+                        groups.append(group_name)
+
+        group = ", ".join(groups) if groups else "Не указано"
+
+
+
+        for column in columns:  # Перебираем "C" и "E"
+            room_column = "D" if column == "C" else "F"
+
+            for pair_cell, (time_start, time_end) in zip(pairs_cells, time_cells):
+                pair_number = clean_text(sheet[f"A{pair_cell[1:]}"].value)
+                subject = clean_text(sheet[f"{column}{pair_cell[1:]}"].value)
+                teacher = clean_text(sheet[f"{column}{int(pair_cell[1:]) + 1}"].value)
+                room = clean_text(sheet[f"{room_column}{pair_cell[1:]}"].value)
+
+                # Проверяем совпадение имени преподавателя
+                if teacher and teacher_name in normalize_teacher_name(teacher):
+                    result.append({
+                        "day": day.capitalize(),
+                        "date": date or "Не указана",
+                        "time": (sheet[time_start].value, sheet[time_end].value),
+                        "subject": subject or "Не указано",
+                        "room": room or "Не указана",
+                        "group": group or "Не указана",
+                        "pair": pair_number or "Не указано"
+                    })
 
     return result
 
@@ -655,10 +690,13 @@ def show_teacher_schedule(call):
                     continue
 
             # Определение столбца (например, "C" для SPO)
-            column = get_group_and_room_cells(sheet_name)["group_cell"][0]
+            group_cells = get_group_and_room_cells(sheet)["group_cells"]  # Получаем список групповых ячеек
+            columns = [cell[0] for cell in group_cells]  # Преобразуем ["C7", "E7"] в ["C", "E"]
+
+
 
             # Поиск расписания преподавателя
-            results = search_teacher(sheet, column, sheet_name, teacher_name, target_day=day, education_type=education_type)
+            results = search_teacher(sheet, sheet_name, teacher_name, target_day=day, education_type=education_type)
             found_data.extend(results)
 
     # Удаление старого сообщения
@@ -736,7 +774,8 @@ def handle_document(message):
     )
 
     bot.send_message(chat_id, "📂 Выберите тип обучения:", reply_markup=markup)
-    
+
+
 @bot.callback_query_handler(func=lambda call: call.data in ["schedule_spo", "schedule_vo"])
 def choose_week_upload(call):
     """Выбор, обновить текущее расписание или загрузить на следующую неделю"""
