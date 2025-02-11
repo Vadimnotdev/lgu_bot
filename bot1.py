@@ -212,7 +212,7 @@ GROUP_ROOM_MAPPING = {
     "5-8121, 5-2121": {"group_cell": "C7", "room_column": "F"}
 }
 
-token = "7572602237:AAH4hzckLH6JrqmkSJUBYGG0h-6qgLf1s-k"
+token = ""
 bot = telebot.TeleBot(token)
 
 # Временное хранилище для данных пользователя
