@@ -212,7 +212,7 @@ GROUP_ROOM_MAPPING = {
     "5-8121, 5-2121": {"group_cell": "C7", "room_column": "F"}
 }
 
-token = ""
+token = "7572602237:AAH4hzckLH6JrqmkSJUBYGG0h-6qgLf1s-k"
 bot = telebot.TeleBot(token)
 
 # Временное хранилище для данных пользователя
@@ -308,16 +308,6 @@ def search_teacher(sheet, sheet_name, teacher_name, target_day=None, education_t
     """
     Ищет расписание преподавателя по всем дням недели.
     Если target_day передан, то ищет только для этого дня.
-    
-    Аргументы:
-        sheet: объект листа Excel.
-        sheet_name: название листа для использования в маппинге.
-        teacher_name: имя преподавателя для поиска.
-        target_day: конкретный день недели для поиска (опционально).
-        education_type: тип образования ("SPO" или "VO").
-    
-    Возвращает:
-        Список расписания, соответствующего преподавателю.
     """
     teacher_name = normalize_teacher_name(teacher_name)
     result = []
@@ -344,24 +334,8 @@ def search_teacher(sheet, sheet_name, teacher_name, target_day=None, education_t
         time_cells = day_info["time_cells"]
         date_cell = day_info["date_cell"]
 
-        # Извлекаем дату и группы
+        # Извлекаем дату
         date = sheet[date_cell].value
-        groups = []  # Список для групп, которым принадлежит пара
-
-        for column in columns:  # Перебираем столбцы C и E
-            for pair_cell, (time_start, time_end) in zip(pairs_cells, time_cells):
-                subject = clean_text(sheet[f"{column}{pair_cell[1:]}"].value)
-                teacher = clean_text(sheet[f"{column}{int(pair_cell[1:]) + 1}"].value)
-
-                if teacher and teacher_name in normalize_teacher_name(teacher):
-                    group_cell = f"{column}7"  # Определяем ячейку с группой (C7 или E7)
-                    group_name = clean_text(sheet[group_cell].value)  # Получаем название группы
-                    if group_name and group_name not in groups:  # Добавляем только если предмет относится к этой группе
-                        groups.append(group_name)
-
-        group = ", ".join(groups) if groups else "Не указано"
-
-
 
         for column in columns:  # Перебираем "C" и "E"
             room_column = "D" if column == "C" else "F"
@@ -374,13 +348,16 @@ def search_teacher(sheet, sheet_name, teacher_name, target_day=None, education_t
 
                 # Проверяем совпадение имени преподавателя
                 if teacher and teacher_name in normalize_teacher_name(teacher):
+                    group_cell = f"{column}7"  # Определяем ячейку с группой (C7 или E7)
+                    group_name = clean_text(sheet[group_cell].value)  # Получаем название группы
+
                     result.append({
                         "day": day.capitalize(),
                         "date": date or "Не указана",
                         "time": (sheet[time_start].value, sheet[time_end].value),
                         "subject": subject or "Не указано",
                         "room": room or "Не указана",
-                        "group": group or "Не указана",
+                        "group": group_name or "Не указана",  # Теперь у пары правильная группа
                         "pair": pair_number or "Не указано"
                     })
 
@@ -531,7 +508,7 @@ def ask_group_name(call):
     # Отправляем новое сообщение
     markup = types.InlineKeyboardMarkup()
     markup.add(back_button("search_student"))  # Кнопка "Назад"
-    sent_message = bot.send_message(call.message.chat.id, "Введите номер группы:", reply_markup=markup)
+    sent_message = bot.send_message(call.message.chat.id, "Введите номер группы(например C7124Б. C - eng, Б - ru):", reply_markup=markup)
     
     # Сохраняем ID отправленного сообщения для последующего удаления
     user_data[call.message.chat.id]["last_bot_message_id"] = sent_message.message_id
@@ -752,7 +729,7 @@ def go_back(call):
         bot.edit_message_text("Выберите день недели:", call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 
-ADMIN_ID = 1618420100  # Замените на ваш Telegram ID
+ADMIN_ID = 6328346430  # Замените на ваш Telegram ID
 
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
@@ -798,7 +775,7 @@ def auto_update_schedule():
     """Автоматически обновляет расписание в понедельник"""
     while True:
         now = datetime.now()
-        if now.weekday() == 0:  # 0 - это понедельник
+        if now.weekday() == 6:  # 0 - это понедельник
             try:
                 # Удаляем старые файлы this_spo.xlsx и this_vo.xlsx
                 if os.path.exists("this_spo.xlsx"):
