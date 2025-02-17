@@ -260,16 +260,22 @@ def select_teacher_week(call):
     except Exception as e:
         print(f"Не удалось удалить сообщение: {e}")
 
-    # Переходим к этапу выбора дня недели
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("📅 Показать расписание на всю неделю", callback_data="show_week_schedule"))
-    
-    for day in DAYS_MAPPING.keys():
-        markup.add(InlineKeyboardButton(day.capitalize(), callback_data=f"teacher_day_{day}"))
+    # Создаем клавиатуру
+    markup = InlineKeyboardMarkup(row_width=2)  # Устанавливаем 2 кнопки в ряд
 
+    # Добавляем кнопку для показа расписания на всю неделю (отдельным рядом)
+    markup.add(InlineKeyboardButton("📅 Показать расписание на всю неделю", callback_data="show_week_schedule"))
+
+    # Добавляем кнопки для дней недели (в два ряда)
+    day_buttons = [InlineKeyboardButton(day.capitalize(), callback_data=f"teacher_day_{day}") for day in DAYS_MAPPING.keys()]
+    markup.add(*day_buttons)
+
+    # Добавляем кнопку "Назад" для возврата на предыдущий этап
     markup.add(back_button("search_teacher"))
 
+    # Отправляем сообщение с клавиатурой
     bot.send_message(call.message.chat.id, "Выберите день недели или просмотрите расписание на всю неделю:", reply_markup=markup)
+
 
 @bot.callback_query_handler(func=lambda call: call.data == "show_week_schedule")
 def show_week_schedule(call):
